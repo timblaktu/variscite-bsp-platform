@@ -53,5 +53,5 @@
     <linkfile src="README"            dest="README"/>
     <linkfile src="scripts/var-start-container.sh"            dest="var-start-container.sh"/>
   </project>
-  <project name="var-host-docker-containers" path="sources/var-host-docker-containers" remote="variscite"   revision="12f2e807d52e20074839757235e38542d520f161" upstream="master"/>
+  <project name="var-host-docker-containers" path="sources/var-host-docker-containers" remote="variscite"   revision="fc27a5d9b6ef7facab50ebf27af18ae6269b0c4d" upstream="master"/>
 </manifest>
