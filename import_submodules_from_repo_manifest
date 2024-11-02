@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# NAME
+#        import_submodules_from_repo_manifest - imports a git-repo tool XML manifest into native git constructs
+# 
+# SYNOPSIS
+#        import_submodules_from_repo_manifest REPO_MANIFEST_URL REPO_MANIFEST_BRANCH REPO_MANIFEST_FILEPATH
+# 
+# DESCRIPTION
+#        This command imports the specified git-repo tool XML manifest into native git constructs
+#        configured inside a local git super-repository in $(pwd). 
+#
+#        Its arguments mirror those of the repo tool, specifying the location of the manifest 
+#        via the containing git repo URL, the desired branch/ref, and the path to the manifest
+#        within the repo.
+#
+# ARGS
+#     REPO_MANIFEST_URL
+#         URL of a git repository containing the Google repo-tool xml manifest file defining all layer repositories
+#
+#     REPO_MANIFEST_BRANCH
+#         Name of git branch to use in REPO_MANIFEST_URL
+#
+#     REPO_MANIFEST_FILEPATH
+#         Name of the Google repo-tool xml manifest file to use.
+#         Should be contained in git repo REPO_MANIFEST_URL on branch REPO_MANIFEST_BRANCH.
+#
+exithandler() {
+    declare -g PROGPID
+    # printf "\nEXIT trap. PROGPID=%s\n" "${PROGPID:-not set}"
+    rm -rf $_RRD
+    if [ $PROGPID -ne 0 ]; then 
+        kill $PROGPID
+    fi
+    exit
+}
+trap exithandler EXIT
+set -euo pipefail
+
+if [ $# -lt 3 ]; then
+  printf "ERROR: all 3 arguments are required!\n"
+  printf "       REPO_MANIFEST_URL, REPO_MANIFEST_BRANCH, REPO_MANIFEST_FILEPATH"
+  exit 1
+fi
+_REPO_MANIFEST_URL="$1"; shift
+_REPO_MANIFEST_BRANCH="$1"; shift
+_REPO_MANIFEST_FILEPATH="$1"; shift
+
+PROGPID=0  # track pid of child process used for progress bar
+
+handle_submodule() {
+    declare -g PROGPID
+    if [ $# -lt 5 ]; then
+        printf "ERROR: 5 arguments are required: _NAME _PATH _URL _BRANCH _REV [_LINKFILES optional]"
+        exit 1
+    fi
+    _NAME="$1"; shift
+    _PATH="$1"; shift
+    _URL="$1"; shift
+    _BRANCH="$1"; shift
+    _REV="$1"; shift
+    # _LINKFILES handled below
+
+    printf "    %-30s %-40s %-64s %-24s %-42s" "$_NAME" "$_PATH" "$_URL" "$_BRANCH" "$_REV" 
+    # if git submodule | grep -qE "\b${_PATH}\b"; then
+    if git config --file .gitmodules --get-regexp "submodule\.$_NAME\..*" 2>&1 >/dev/null; then
+        printf " ==> found existing submodule\n"
+    else
+        printf "     no submodule found. Creating"
+        progress &
+        PROGPID=$!
+        git submodule --quiet add ${_BRANCH:+--branch $_BRANCH} --name $_NAME $_URL $_PATH 2>&1 >/dev/null
+        git -C $_PATH checkout --quiet $_REV 2>&1 >/dev/null
+        kill $PROGPID
+        PROGPID=0
+        echo
+    fi
+    while (($#)); do
+        SRC="$1"; shift
+        DEST="$1"; shift
+        (
+            cd "$_PATH" 
+            # <linkfile> semantics in Git Repo Manifest xml are counter-intuitive:
+            #   - "The symlink is created at DEST and points to SRC". From:
+            #   - https://gerrit.googlesource.com/git-repo/+/master/docs/manifest-format.md#Element-linkfile
+            if [ "$SRC" = "$DEST" ]; then 
+                printf "skipping unnecessary link (src==dest==%s)\n" "$SRC"
+            elif [ "$(realpath $SRC)" = "$(realpath $DEST)" ]; then 
+                printf "skipping preexisting link (%s-->%s)\n" "$DEST" "$SRC" 
+            else
+                printf "creating link %s-->%s\n" "$DEST" "$SRC"
+                ln -sT $SRC $DEST 
+            fi
+        ) | sed 's/^/         /'
+    done
+}
+
+main() {
+    assert_pwd_is_root
+    _RRD=.repo_manifest_repo_working_dir
+    _RMP="$_RRD/$_REPO_MANIFEST_FILEPATH" 
+    if [ ! -f "$_RMP" ]; then  # clean and clone repo manifest repo working dir
+        rm -rf $_RRD  
+        git clone --quiet --depth 1 --branch $_REPO_MANIFEST_BRANCH $_REPO_MANIFEST_URL $_RRD
+    fi
+    # Could hash manifest contents and use this for unique subdir to put its submodules in, and
+    # similarly, to use to remove them on demand. See clean_imported_submodules in functions.sh.
+    _REPO_MANIFEST_SUMMARY_FILE="imported-repo-manifest-summary-$(repo_manifest_hash $_RMP)"
+    if [ -f "$_REPO_MANIFEST_SUMMARY_FILE" ]; then 
+        _bk="$_REPO_MANIFEST_SUMMARY_FILE"-$(date +"%Y-%m-%d-%H-%M-%S")
+        printf "Backing up existing summary file for this manifest hash to %s...\n" "$_bk"
+        mv "$_REPO_MANIFEST_SUMMARY_FILE" "$_bk"
+    fi
+    : > $_REPO_MANIFEST_SUMMARY_FILE
+    printf "\nConverting projects in repo manifest xml into submodules...\n"
+    printf "    %-30s %-40s %-64s %-24s %-42s\n" "NAME" "PATH" "URL" "BRANCH" "REV" 
+    yq -p=xml -o=json --xml-attribute-prefix '' --xml-skip-proc-inst "$_RMP" \
+        | jq -r 'INDEX(.manifest.remote[]; .name) as $remotes | .manifest.project[] | 
+        "\(.name) \(.path) \($remotes[.remote].fetch)/\(.name) \(.upstream) \(.revision) \(if . | has("linkfile") then .linkfile | .[] | [.src,.dest] | join(" ") else "" end)"' \
+        | \
+        while read -r _NAME _PATH _URL _BRANCH _REV _LINKFILES; do 
+            if [ "$_BRANCH" = "null" ]; then _BRANCH= ; fi
+            handle_submodule "$_NAME" "$_PATH" "$_URL" "$_BRANCH" "$_REV" $_LINKFILES  # important! no quotes on _LINKFILES!
+            printf "%s %s %s %s %s\n" "$_NAME" "$_PATH" "$_URL" "$_BRANCH" "$_REV" | tee -a "$_REPO_MANIFEST_SUMMARY_FILE" 
+        done
+    printf "\n${GREEN}Import Successful!${RESET} Record of Manifest Submodules (stored in %s):\n%s" \
+        "$_REPO_MANIFEST_SUMMARY_FILE" "$(cat $_REPO_MANIFEST_SUMMARY_FILE | sed 's/^/    /')"
+    printf "\n${GREEN}Import Successful!${RESET} Final Submodule status:\n%s" "$(git submodule status | sed 's/^/    /')"
+    rm -rf $_RRD  
+}
+
+main

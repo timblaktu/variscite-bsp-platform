@@ -1,0 +1,50 @@
+# Terminal Things
+export TERM=screen
+TPUT=/usr/bin/tput
+if $TPUT setaf 1 &> /dev/null; then
+    BOLD="$(     $TPUT bold)"
+    UNDOBOLD="$( $TPUT dim)"
+    STANDOUT="$( $TPUT rmso)"
+    UNDOSTANDOUT="$($TPUT rmso)"
+    UNDER="$(    $TPUT smul)"
+    UNDOUNDER="$($TPUT rmul)"
+    REV="$(      $TPUT rev)"
+    BLINK="$(    $TPUT blink)"
+    BLACK="$(    $TPUT setaf 0)"
+    RED="$(      $TPUT setaf 1)"
+    GREEN="$(    $TPUT setaf 2)"
+    YELLOW="$(   $TPUT setaf 3)"
+    BLUE="$(     $TPUT setaf 4)"
+    MAGENTA="$(  $TPUT setaf 5)"
+    CYAN="$(     $TPUT setaf 6)"
+    GRAY="$(     $TPUT setaf 7)"
+    DKGRAY="$(   $TPUT setaf 8)"
+    BRRED="$(    $TPUT setaf 9)"
+    BRGREEN="$(  $TPUT setaf 10)"
+    BRYELLOW="$( $TPUT setaf 11)"
+    BRBLUE="$(   $TPUT setaf 12)"
+    BRMAGENTA="$($TPUT setaf 13)"
+    BRCYAN="$(   $TPUT setaf 14)"
+    BRGRAY="$(   $TPUT setaf 15)"
+    # TODO: This value for RESET is not printed correctly from Makefile recipes, probably due to escape rules
+    RESET="$($TPUT sgr0)"
+    # printf -v RESET "\033[0;10m"
+else
+    printf "Disabling ANSI color codes since `tput setaf 1` returned ERROR code $?\n"
+    STANDOUT=""
+    UNDO_STANDOUT=""
+    UNDER=""
+    UNDO_UNDER=""
+    REV=""
+    BLINK=""
+    RED=""
+    GREEN=""
+    YELLOW=""
+    BLUE=""
+    BRIGHT_RED=""
+    BRIGHT_GREEN=""
+    BRIGHT_YELLOW=""
+    RESET=""
+fi
+unset TPUT
+
