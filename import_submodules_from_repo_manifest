@@ -60,7 +60,7 @@ handle_submodule() {
     _REV="$1"; shift
     # _LINKFILES handled below
 
-    printf "    %-30s %-40s %-64s %-24s %-42s" "$_NAME" "$_PATH" "$_URL" "$_BRANCH" "$_REV" 
+    printf "    %-30s %-40s %-64s %-24s %-40s" "$_NAME" "$_PATH" "$_URL" "$_BRANCH" "$_REV" 
     # if git submodule | grep -qE "\b${_PATH}\b"; then
     if git config --file .gitmodules --get-regexp "submodule\.$_NAME\..*" 2>&1 >/dev/null; then
         printf " ==> found existing submodule\n"
@@ -110,20 +110,19 @@ main() {
         printf "Backing up existing summary file for this manifest hash to %s...\n" "$_bk"
         mv "$_REPO_MANIFEST_SUMMARY_FILE" "$_bk"
     fi
-    : > $_REPO_MANIFEST_SUMMARY_FILE
     printf "\nConverting projects in repo manifest xml into submodules...\n"
-    printf "    %-30s %-40s %-64s %-24s %-42s\n" "NAME" "PATH" "URL" "BRANCH" "REV" 
+    printf "    %-30s %-40s %-64s %-24s %-40s\n" "NAME" "PATH" "URL" "BRANCH" "REV" 
     yq -p=xml -o=json --xml-attribute-prefix '' --xml-skip-proc-inst "$_RMP" \
         | jq -r 'INDEX(.manifest.remote[]; .name) as $remotes | .manifest.project[] | 
-        "\(.name) \(.path) \($remotes[.remote].fetch)/\(.name) \(.upstream) \(.revision) \(if . | has("linkfile") then .linkfile | .[] | [.src,.dest] | join(" ") else "" end)"' \
+        "\(.name) \(.path) \($remotes[.remote].fetch)/\(.name) \(.upstream) \(.revision) \(if . | has("linkfile") then .linkfile | to_entries | map(.value.src,.value.dest) | join(" ") else "" end)"' \
         | \
         while read -r _NAME _PATH _URL _BRANCH _REV _LINKFILES; do 
             if [ "$_BRANCH" = "null" ]; then _BRANCH= ; fi
             handle_submodule "$_NAME" "$_PATH" "$_URL" "$_BRANCH" "$_REV" $_LINKFILES  # important! no quotes on _LINKFILES!
             printf "%s %s %s %s %s\n" "$_NAME" "$_PATH" "$_URL" "$_BRANCH" "$_REV" | tee -a "$_REPO_MANIFEST_SUMMARY_FILE" 
         done
-    printf "\n${GREEN}Import Successful!${RESET} Record of Manifest Submodules (stored in %s):\n%s" \
-        "$_REPO_MANIFEST_SUMMARY_FILE" "$(cat $_REPO_MANIFEST_SUMMARY_FILE | sed 's/^/    /')"
+    printf "\n${GREEN}Import Successful!${RESET} Record of Manifest Submodules (stored in %s):\n" "$_REPO_MANIFEST_SUMMARY_FILE"
+    column -t "$_REPO_MANIFEST_SUMMARY_FILE" | sed 's/^/    /' 
     printf "\n${GREEN}Import Successful!${RESET} Final Submodule status:\n%s" "$(git submodule status | sed 's/^/    /')"
     rm -rf $_RRD  
 }
