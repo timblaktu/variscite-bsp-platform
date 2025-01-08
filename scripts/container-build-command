@@ -1,0 +1,55 @@
+#!/bin/bash -eu
+# Automate Variscite build instructions as a basis for reproducing customer build issues.
+
+# Fetch a repo-tool manifest and initialize repo-tool's configuration in this dir
+if ! [ -d .repo ]; then 
+    repo init --no-clone-bundle --verbose -u https://github.com/varigit/variscite-bsp-platform.git -b scarthgap -m imx-6.6.23-2.0.0.xml
+fi
+
+# Modify the repo-tool configuration to clone our custom layer repo to sources.
+#   - https://gerrit.googlesource.com/git-repo/+/master/docs/manifest-format.md#local-manifests
+#
+mkdir -p .repo/local_manifests
+cat << EOF > .repo/local_manifests/xilica-repo-manifest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+    <remote name="timblaktu-github" alias="origin" fetch="https://github.com/timblaktu" revision="yocto" />
+    <project name="meta-xilica-tr-sys" path="sources/meta-xilica-tr-sys" remote="timblaktu-github" />
+</manifest>
+EOF
+
+# Clone or Fetch/Update all repos described in the repo-tool configuration
+#
+repo sync --no-clone-bundle --verbose --jobs $(nproc) --fail-fast --optimized-fetch
+
+# Setup OE Environment
+#
+set +eu  # bc scripts aren't resilient to errexit and nounset
+if [ -d oebuild ]; then
+    source setup-environment oebuild
+else
+    MACHINE=imx8mp-var-dart DISTRO=fsl-imx-xwayland EULA=y . var-setup-release.sh oebuild
+fi
+set -eu  # bc scripts aren't resilient to errexit and nounset
+
+# Add our custom layer meta-xilica-tr-sys to the generated bblayers.conf (once)
+#
+while read BBLAYER_LINE; do
+    if ! grep -qsxF "$BBLAYER_LINE" conf/bblayers.conf; then
+        echo "$BBLAYER_LINE" >> conf/bblayers.conf
+    fi
+done <<EOF
+BBLAYERS += "\${BSPDIR}/sources/meta-xilica-tr-sys"
+EOF
+
+
+# Environment Setup is Complete, now...
+
+# Build our custom image
+# bitbake xilica-tr-base
+
+# Reproduce the parse error by running first step in SWUpdate Guide on our image
+VAR_RECOVERY_TARGET_ROOTFS="xilica-tr-swupdate" bitbake var-recovery-image
+
+# In fact, the parse error occurs in any bitbake incantation, since the issue lies in the metadata
+# bitbake-layers show-layers

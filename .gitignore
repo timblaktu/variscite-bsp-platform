@@ -1,0 +1,17 @@
+**/*.vim
+*build*/
+*.log
+.DS_Store
+Thumbs.db
+*.app
+*.exe
+*.war
+*.mp4
+*.tiff
+*.avi
+*.flv
+*.mov
+*.wmv
+node_modules/
+dist/
+*.py[cod]
