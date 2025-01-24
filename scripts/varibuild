@@ -1,42 +1,41 @@
 #!/bin/sh -eu
 # Automation of Variscite's official yocto build instructions to help reproduce issues
+#
+#     Usage: varibuild HOST_WORK_DIR CONTAINER_COMMAND [ARG [...]]
+#
+
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-VARHOSTDOCKERPATH="$HOME/var-host-docker-containers" 
+VARHOSTDOCKERPATH="$HOME/var-host-docker-containers"
 HOST_DL_DIR=/mnt/wsl/internal-4tb-nvme/dl_dir
 HOST_SSTATE_DIR=/mnt/wsl/internal-4tb-nvme/sstate_dir
 
-enter_a_clean_build_dir() {
-    # generate a uniquely named build dir to use if no build dir arg specified
+main() {
     VB_BDIR="varibuild-$(date +"%Y-%m-%d-%H-%M-%S")"
-    [ $# -gt 0 ] && VB_BDIR="$1"  # use the specified build dir
+    [ $# -gt 0 ] && VB_BDIR="$1" && shift  # use the specified build dir arg
     VB_BPATH=$(readlink -m ./$VB_BDIR)
     mkdir -p $VB_BPATH
     cd $VB_BPATH
     printf "Entered build dir %s...\n" "$(pwd)"
-}
 
-main() {
-    enter_a_clean_build_dir "$@"
-    
     # Get Variscite's docker project if we haven't already
     if ! [ -d "$VARHOSTDOCKERPATH" ]; then
         git clone https://github.com/varigit/var-host-docker-containers.git "$VARHOSTDOCKERPATH"
     fi
-    
+
     # Run container-build-command in Variscite's Ubuntu 22.04 container
     #
     #   Notes:
+    #     - Remaining args are passed to container to run
     #     - Mounts specified host dirs to DL/SSTATE_DIRs inside container
     #       - Customize or remove these as necessary, but note that the site.conf
     #         used in the build unconditionally uses these locations in /opt
-    #     - Mounts ./scripts to /opt/scripts to reduce container context and to 
+    #     - Mounts ./scripts to /opt/scripts to reduce container context and to
     #       allow for running custom code in the container without rebuilding it.
-    #     - See container-build-command to see how we're reproducing the issue.
     #
     "$VARHOSTDOCKERPATH"/run.sh -b -u 22.04 -w $(pwd) \
         -v $HOST_DL_DIR:/opt/dl_dir \
         -v $HOST_SSTATE_DIR:/opt/sstate_dir \
         -v "$SCRIPT_DIR":/opt/script \
-        --command /opt/script/container-build-command
+        --command "/opt/script/container-build-command $*"
 }
 main "$@"
