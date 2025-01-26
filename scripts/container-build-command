@@ -3,6 +3,7 @@
 
 # Fetch repo-tool manifest and initialize repo-tool's configuration in this dir
 if ! [ -d .repo ]; then 
+    # repo init --no-clone-bundle -u https://github.com/varigit/variscite-bsp-platform.git -b mickledore -m imx-6.1.36-2.1.0.xml
     repo init --no-clone-bundle -u https://github.com/varigit/variscite-bsp-platform.git -b scarthgap -m imx-6.6.23-2.0.0.xml
 fi
 

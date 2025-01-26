@@ -9,8 +9,14 @@ ROOT_DIR="$(dirname $SCRIPT_DIR)"
 VARHOSTDOCKERPATH="$HOME/var-host-docker-containers"
 
 # User change these
-HOST_DL_DIR=/mnt/wsl/internal-4tb-nvme/dl_dir
-HOST_SSTATE_DIR=/mnt/wsl/internal-4tb-nvme/sstate_dir
+
+# Going back to old internal sstate dir after proving issue was not sstate.
+# HOST_DL_DIR=/mnt/wsl/internal-4tb-nvme/dl_dir
+# HOST_SSTATE_DIR=/mnt/wsl/internal-4tb-nvme/sstate_dir
+
+# Starting fresh with new sstate/dl dirs to test theory about persistent esdk build failure
+HOST_DL_DIR=/mnt/wsl/ext-tb4-4tb-nvme-1/dl_dir
+HOST_SSTATE_DIR=/mnt/wsl/ext-tb4-4tb-nvme-1/sstate_dir
 
 HOST_WORK_DIR="varibuild-$(date +"%Y-%m-%d-%H-%M-%S")"
 [ $# -gt 0 ] && HOST_WORK_DIR="$1" && shift  # use the specified build dir arg
@@ -58,12 +64,15 @@ main() {
     #     - Mounts this repo's root to /opt/hostroot to reduce container context
     #       and allow running custom code in the container without rebuilding it.
     #
-    (( $# > 0 )) && CMDARG="--command '/opt/hostroot/scripts/container-build-command $*'"
+    # Set --command arg string if there are remaining varibuild args, else empty should run shell
+    # TODO: this isn't working bc of the way run.sh parses args?
+    # (( $# > 0 )) && CMDARG="--command '/opt/hostroot/scripts/container-build-command $*'"
     set -x
     "$VARHOSTDOCKERPATH"/run.sh -b -u 22.04 -w $(pwd) -e "$ROOT_DIR"/.env \
         -v $HOST_DL_DIR:/opt/dl_dir \
         -v $HOST_SSTATE_DIR:/opt/sstate_dir \
         -v "$ROOT_DIR":/opt/hostroot \
-        ${CMDARG:-}
+        --command "/opt/hostroot/scripts/container-build-command $*"
+        #${CMDARG:-}
 }
 main "$@"
